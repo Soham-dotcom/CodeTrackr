@@ -11,6 +11,8 @@ const state = {
   startedMs: undefined,
   bufferedMinutes: 0,
   lastKnownFile: "unknown",
+  linesAdded: 0,
+  linesRemoved: 0,
 };
 
 // --------- config helpers ----------
@@ -33,7 +35,15 @@ function safeUsername() {
   }
 }
 
-// --------- activity tracking ----------
+// --------- helpers ----------
+function getFileMeta(filePath) {
+  if (!filePath) return {};
+  const ext = path.extname(filePath).toLowerCase();
+  const projectName = vscode.workspace.name || path.basename(vscode.workspace.rootPath || path.dirname(filePath));
+  const language = vscode.window.activeTextEditor?.document?.languageId || "unknown";
+  return { fileType: ext, projectName, language };
+}
+
 function markActivity(fileNameMaybe) {
   state.lastActivityMs = Date.now();
   if (fileNameMaybe) {
@@ -48,12 +58,19 @@ function markActivity(fileNameMaybe) {
 async function sendActivity(minutes, fileOpened) {
   const { apiBase, userId, apiKey } = getCfg();
 
+  const fullPath = fileOpened || vscode.window.activeTextEditor?.document?.fileName || "unknown";
+  const { fileType, projectName, language } = getFileMeta(fullPath);
+
   const payload = {
+    timestamp: new Date().toISOString(),
     userId,
-    codingTime: Number(minutes.toFixed(3)),
-    date: new Date().toISOString(),
-    source: "new file",         // matches your backend schema note
-    fileOpened: fileOpened || "unknown",
+    fileName: fullPath,
+    fileType,
+    projectName,
+    language,
+    duration: Number(minutes.toFixed(3)),
+    linesAdded: state.linesAdded,
+    linesRemoved: state.linesRemoved,
   };
 
   const headers = apiKey ? { "x-api-key": apiKey } : undefined;
@@ -64,13 +81,15 @@ async function sendActivity(minutes, fileOpened) {
     vscode.window.setStatusBarMessage("CodeTrackr: flushed ✅", 2000);
   } catch (err) {
     console.error("❌ Upload failed:", err?.message || err);
-    vscode.window.setStatusBarMessage("CodeTrackr: flush failed, will retry 🔁", 3000);
-    // keep minutes buffered; caller decides
+    vscode.window.setStatusBarMessage("CodeTrackr: flush failed 🔁", 3000);
     throw err;
+  } finally {
+    // reset line counters after flush
+    state.linesAdded = 0;
+    state.linesRemoved = 0;
   }
 }
 
-// compute minutes since ms timestamp
 function minutesSince(ms) {
   return (Date.now() - ms) / 60000;
 }
@@ -79,30 +98,22 @@ function minutesSince(ms) {
 async function flushIfNeeded(force = false) {
   if (!state.startedMs) return;
 
-  // add any elapsed since lastActivity to buffer in discrete minutes (ceil to avoid zero dribble)
   const elapsedFromStartMin = minutesSince(state.startedMs);
-  const totalSinceStart = elapsedFromStartMin;
-
-  // total buffered = minutes since start + carry from earlier failed flushes
-  const totalBuffered = state.bufferedMinutes + totalSinceStart;
+  const totalBuffered = state.bufferedMinutes + elapsedFromStartMin;
 
   const { minFlushMinutes } = getCfg();
   if (!force && totalBuffered < minFlushMinutes) return;
 
-  // pick filename to report
   const fileOpened =
     vscode.window.activeTextEditor?.document?.fileName ||
     state.lastKnownFile ||
     "unknown";
-  const baseName = fileOpened ? path.basename(fileOpened) : "unknown";
 
   try {
-    await sendActivity(totalBuffered, baseName);
-    // reset start and buffer after successful flush
+    await sendActivity(totalBuffered, fileOpened);
     state.startedMs = Date.now();
     state.bufferedMinutes = 0;
   } catch {
-    // on failure, keep minutes in buffer, and reset start so we don't double-count
     state.bufferedMinutes = totalBuffered;
     state.startedMs = Date.now();
   }
@@ -120,11 +131,23 @@ function start(context) {
   state.startedMs = Date.now();
   markActivity();
 
+  // Watch file edits for line changes
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      const changes = event.contentChanges;
+      for (const c of changes) {
+        const added = (c.text.match(/\n/g) || []).length;
+        const removed = c.range.end.line - c.range.start.line;
+        state.linesAdded += added;
+        state.linesRemoved += removed > 0 ? removed : 0;
+      }
+      markActivity(event.document.fileName);
+    })
+  );
+
   state.timer = setInterval(() => {
-    // if user idle > 10 minutes, don't accumulate beyond that until activity
     const idleMin = minutesSince(state.lastActivityMs);
     if (idleMin > 10) {
-      // simulate a pause: move the "started" forward so we don't count idle time
       state.startedMs = Date.now();
       return;
     }
@@ -153,23 +176,11 @@ async function flushNow() {
 function activate(context) {
   console.log("💻 CodeTrackr extension activated");
 
-  // Register commands EXACTLY as in package.json
   const cmdStart = vscode.commands.registerCommand("codetrackr.start", () => start(context));
   const cmdStop = vscode.commands.registerCommand("codetrackr.stop", () => stop());
   const cmdFlush = vscode.commands.registerCommand("codetrackr.flushNow", () => flushNow());
 
   context.subscriptions.push(cmdStart, cmdStop, cmdFlush);
-
-  // Listen to user actions to keep "last activity" fresh
-  context.subscriptions.push(
-    vscode.workspace.onDidOpenTextDocument((doc) => markActivity(doc.fileName)),
-    vscode.workspace.onDidChangeTextDocument((evt) => markActivity(evt.document.fileName)),
-    vscode.window.onDidChangeActiveTextEditor((ed) => markActivity(ed?.document?.fileName)),
-    vscode.workspace.onDidSaveTextDocument((doc) => markActivity(doc.fileName))
-  );
-
-  // Optional: auto-start after startup if you like the onStartupFinished activation
-  // start(context); // uncomment if you want auto-start
 }
 
 function deactivate() {
