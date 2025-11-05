@@ -7,16 +7,16 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other"],
+  "categories": [
+    "Other"
+  ],
   "main": "./extension.js",
-
   "activationEvents": [
     "onStartupFinished",
     "onCommand:codetrackr.start",
     "onCommand:codetrackr.stop",
     "onCommand:codetrackr.flushNow"
   ],
-
   "contributes": {
     "commands": [
       {
@@ -69,14 +69,21 @@
       }
     }
   },
-
-  "keywords": ["code", "productivity", "tracking", "mongodb", "atlas", "vscode"],
-
+  "keywords": [
+    "code",
+    "productivity",
+    "tracking",
+    "mongodb",
+    "atlas",
+    "vscode"
+  ],
   "scripts": {
     "package": "vsce package"
   },
-
   "devDependencies": {
     "@types/vscode": "^1.85.0"
+  },
+  "dependencies": {
+    "axios": "^1.13.2"
   }
 }
