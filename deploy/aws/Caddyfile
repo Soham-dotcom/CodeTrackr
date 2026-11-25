@@ -1,0 +1,23 @@
+# One address for the browser: the website, and /api + /auth forwarded to the API.
+# Same origin means the login cookie is first-party (see frontend/src/config.ts).
+# Caddy gets and renews the HTTPS certificate for SITE_ADDRESS by itself.
+
+{$SITE_ADDRESS} {
+	encode gzip
+
+	@api path /api/* /auth/* /health
+	handle @api {
+		reverse_proxy api:5050
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

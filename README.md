@@ -159,6 +159,12 @@ code --new-window --user-data-dir ./.vscode-test-profile --extensions-dir ./.vsc
 
 In that window set `codetrackr.apiBase` to `http://localhost:5050` and run **CodeTrackr: Sign In**.
 
+## Deployment and security
+
+- **Production:** website on Vercel, API on Render, database on MongoDB Atlas.
+- **AWS demo environment:** one EC2 server running Docker Compose (`deploy/aws`): Caddy serves the built website with automatic HTTPS and forwards `/api` and `/auth` to the API container, next to a MongoDB container with demo data. GitHub Actions builds both images after CI passes on `main`, copies them to the server over SSH, restarts the stack and checks `/health` (`.github/workflows/aws-deploy.yml`).
+- **Security checks in CI:** `npm audit` on shipped packages (fails at high or critical), gitleaks secret scanning over the full history, CodeQL, and weekly Dependabot updates. How each OWASP Top 10 risk is handled: [SECURITY.md](SECURITY.md).
+
 ## Tests
 
 ```bash

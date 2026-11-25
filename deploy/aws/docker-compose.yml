@@ -1,0 +1,62 @@
+# CodeTrackr demo environment on one AWS EC2 server (Docker Compose).
+#
+#   web    Caddy: the built website, HTTPS, and /api + /auth forwarded to the API
+#   api    the Express API image (backend/Dockerfile)
+#   mongo  MongoDB 7, data kept in a volume
+#
+# DEMO ENVIRONMENT: seeded with invented demo data, and everyone is signed in as the
+# demo user (AUTH_BYPASS). It never touches the production database or real users.
+# The production site runs on Render + Vercel + MongoDB Atlas.
+#
+# Needs a .env next to this file with SITE_ADDRESS and JWT_SECRET (never committed).
+# Deployed by .github/workflows/aws-deploy.yml.
+
+services:
+  mongo:
+    image: mongo:7
+    command: ["--wiredTigerCacheSizeGB", "0.25"] # the server has 1 GB of memory
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: codetrackr-api:latest
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/codetrackr
+      MONGO_TLS: "false"
+      PORT: "5050"
+      FRONTEND_URL: https://${SITE_ADDRESS}
+      NODE_ENV: development # demo only: lets AUTH_BYPASS run (it is refused in production)
+      AUTH_BYPASS: "true"
+      JWT_SECRET: ${JWT_SECRET}
+      GOOGLE_CLIENT_ID: demo
+      GOOGLE_CLIENT_SECRET: demo
+      GOOGLE_CALLBACK_URL: https://${SITE_ADDRESS}/auth/google/callback
+    command: ["sh", "-c", "node scripts/seed-local.js && node app.js"]
+    restart: unless-stopped
+
+  web:
+    image: codetrackr-web:latest
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+  caddy-data:

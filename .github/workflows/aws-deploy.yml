@@ -1,0 +1,60 @@
+name: Deploy to AWS
+
+# Continuous deployment of the demo environment on one EC2 server (deploy/aws).
+# Runs only after CI passes on main, and only in the Soham-dotcom/CodeTrackr repository.
+# Builds both images here, copies them to the server over SSH, restarts the stack, and
+# fails if /health does not report the database connected.
+#
+# Repository secrets: AWS_HOST (server IP), AWS_SSH_KEY (private key, the .pem contents),
+# AWS_SITE_ADDRESS (e.g. 3-110-103-36.sslip.io).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency: aws-deploy
+
+jobs:
+  deploy:
+    if: >-
+      github.repository == 'Soham-dotcom/CodeTrackr' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ secrets.AWS_HOST }}
+      SITE: ${{ secrets.AWS_SITE_ADDRESS }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Build the API and website images
+        run: |
+          docker build -t codetrackr-api backend
+          docker build -t codetrackr-web frontend
+          docker save codetrackr-api codetrackr-web | gzip > images.tgz
+          ls -lh images.tgz
+
+      - name: Copy to the server and restart
+        env:
+          KEY: ${{ secrets.AWS_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          scp -i ~/.ssh/deploy_key images.tgz deploy/aws/docker-compose.yml deploy/aws/Caddyfile "ubuntu@$HOST:codetrackr/"
+          ssh -i ~/.ssh/deploy_key "ubuntu@$HOST" \
+            'cd codetrackr && gunzip -c images.tgz | sudo docker load && rm images.tgz && sudo docker compose up -d && sudo docker image prune -f'
+
+      - name: Wait for /health to report the database connected
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "https://$SITE/health" | grep -q '"db":true'; then echo healthy; exit 0; fi
+            sleep 5
+          done
+          echo "the server did not become healthy in time" >&2
+          exit 1
