@@ -150,7 +150,7 @@
     "pretest": "npm run build"
   },
   "devDependencies": {
-    "@types/node": "^18.0.0",
+    "@types/node": "^26.6.6",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.14.54",
     "typescript": "^5.0.0",
