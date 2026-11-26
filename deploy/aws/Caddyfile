@@ -10,6 +10,11 @@
 		reverse_proxy api:5050
 	}
 
+	# The metrics dashboard. The API's own /metrics is never forwarded: only Prometheus reads it.
+	handle /grafana* {
+		reverse_proxy grafana:3000
+	}
+
 	handle {
 		root * /srv
 		try_files {path} /index.html

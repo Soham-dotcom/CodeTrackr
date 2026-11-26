@@ -163,6 +163,7 @@ In that window set `codetrackr.apiBase` to `http://localhost:5050` and run **Cod
 
 - **Production:** website on Vercel, API on Render, database on MongoDB Atlas.
 - **AWS demo environment:** one EC2 server running Docker Compose (`deploy/aws`): Caddy serves the built website with automatic HTTPS and forwards `/api` and `/auth` to the API container, next to a MongoDB container with demo data. GitHub Actions builds both images after CI passes on `main`, copies them to the server over SSH, restarts the stack and checks `/health` (`.github/workflows/aws-deploy.yml`).
+- **Metrics:** the API exposes Prometheus metrics at `/metrics` (requests, latency and errors per route, the hourly account refresh, memory), only with a bearer token. On AWS, Prometheus scrapes it and a read-only Grafana dashboard is at `/grafana`.
 - **Security checks in CI:** `npm audit` on shipped packages (fails at high or critical), gitleaks secret scanning over the full history, CodeQL, and weekly Dependabot updates. How each OWASP Top 10 risk is handled: [SECURITY.md](SECURITY.md).
 
 ## Tests
@@ -179,7 +180,7 @@ cd extension && npm test
 cd frontend && npm run lint && npm test && npm run build
 ```
 
-570 backend unit assertions, 80 API integration tests (the real Express app over HTTP against an
+574 backend unit assertions, 81 API integration tests (the real Express app over HTTP against an
 in-memory MongoDB), 135 extension assertions and 79 frontend tests. Frontend tests run in the India
 time zone, where the date bugs showed up. CI runs all of them, plus a Docker build with a health
 check, on every push.

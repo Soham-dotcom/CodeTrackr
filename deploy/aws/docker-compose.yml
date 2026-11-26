@@ -3,12 +3,15 @@
 #   web    Caddy: the built website, HTTPS, and /api + /auth forwarded to the API
 #   api    the Express API image (backend/Dockerfile)
 #   mongo  MongoDB 7, data kept in a volume
+#   prometheus  scrapes the API's /metrics every 15 s, keeps 7 days
+#   grafana     the "CodeTrackr API" dashboard at /grafana, read-only for visitors
 #
 # DEMO ENVIRONMENT: seeded with invented demo data, and everyone is signed in as the
 # demo user (AUTH_BYPASS). It never touches the production database or real users.
 # The production site runs on Render + Vercel + MongoDB Atlas.
 #
-# Needs a .env next to this file with SITE_ADDRESS and JWT_SECRET (never committed).
+# Needs, next to this file (never committed): a .env with SITE_ADDRESS, JWT_SECRET, METRICS_TOKEN
+# and GRAFANA_ADMIN_PASSWORD, and a metrics_token file holding the same METRICS_TOKEN.
 # Deployed by .github/workflows/aws-deploy.yml.
 
 services:
@@ -37,6 +40,7 @@ services:
       NODE_ENV: development # demo only: lets AUTH_BYPASS run (it is refused in production)
       AUTH_BYPASS: "true"
       JWT_SECRET: ${JWT_SECRET}
+      METRICS_TOKEN: ${METRICS_TOKEN}
       GOOGLE_CLIENT_ID: demo
       GOOGLE_CLIENT_SECRET: demo
       GOOGLE_CALLBACK_URL: https://${SITE_ADDRESS}/auth/google/callback
@@ -57,6 +61,36 @@ services:
       - caddy-data:/data
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./metrics_token:/etc/prometheus/metrics_token:ro
+      - prometheus-data:/prometheus
+    mem_limit: 200m
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:11.3.1
+    environment:
+      GF_SERVER_ROOT_URL: https://${SITE_ADDRESS}/grafana/
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+      GF_AUTH_ANONYMOUS_ENABLED: "true" # visitors can look, not change
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/codetrackr.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    mem_limit: 200m
+    restart: unless-stopped
+
 volumes:
   mongo-data:
   caddy-data:
+  prometheus-data:
+  grafana-data:

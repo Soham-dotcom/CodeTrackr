@@ -1,0 +1,13 @@
+# Prometheus scrapes the API's /metrics every 15 s over the private Docker network.
+# The bearer token lives in ./metrics_token on the server (made from .env, never committed).
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: codetrackr-api
+    metrics_path: /metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/metrics_token
+    static_configs:
+      - targets: ["api:5050"]

@@ -197,7 +197,7 @@ function syncInBackground() {
   if (syncRunning) return false;
   syncRunning = true;
   syncAll({ freshMs: FRESH_MS })
-    .then((r) => log.info('linked accounts sync', r))
+    .then((r) => { log.info('linked accounts sync', r); require('./httpMetrics').recordSync(r); })
     .catch((err) => log.error('linked accounts sync failed', { err }))
     .finally(() => { syncRunning = false; });
   return true;

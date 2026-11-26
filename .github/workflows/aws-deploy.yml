@@ -46,7 +46,8 @@ jobs:
           printf '%s\n' "$KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          scp -i ~/.ssh/deploy_key images.tgz deploy/aws/docker-compose.yml deploy/aws/Caddyfile "ubuntu@$HOST:codetrackr/"
+          scp -i ~/.ssh/deploy_key images.tgz "ubuntu@$HOST:codetrackr/"
+          scp -i ~/.ssh/deploy_key -r deploy/aws/docker-compose.yml deploy/aws/Caddyfile deploy/aws/prometheus.yml deploy/aws/grafana "ubuntu@$HOST:codetrackr/"
           ssh -i ~/.ssh/deploy_key "ubuntu@$HOST" \
             'cd codetrackr && gunzip -c images.tgz | sudo docker load && rm images.tgz && sudo docker compose up -d && sudo docker image prune -f'
 

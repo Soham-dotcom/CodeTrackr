@@ -1835,6 +1835,22 @@ async function main() {
       assert.strictEqual((await request(app).get('/api/events/aaaaaaaaaaaaaaaaaaaaaaaa').set('Cookie', b.cookie)).status, 404);
       await new Promise((r) => setTimeout(r, 50));
     }],
+    ['metrics: off without a token, and with it Prometheus text that counts requests by route', async () => {
+      const before = process.env.METRICS_TOKEN;
+      try {
+        delete process.env.METRICS_TOKEN;
+        assert.strictEqual((await request(app).get('/metrics')).status, 404, 'off when not configured');
+        process.env.METRICS_TOKEN = 'metrics-test-token';
+        assert.strictEqual((await request(app).get('/metrics').set('Authorization', 'Bearer wrong')).status, 404);
+        await request(app).get('/health');
+        const res = await request(app).get('/metrics').set('Authorization', 'Bearer metrics-test-token');
+        assert.strictEqual(res.status, 200);
+        assert.match(res.text, /http_requests_total\{method="GET",route="\/health",status="200"\}/);
+        assert.match(res.text, /process_cpu_seconds_total/);
+      } finally {
+        if (before === undefined) delete process.env.METRICS_TOKEN; else process.env.METRICS_TOKEN = before;
+      }
+    }],
   ]);
 
   await h.stop();

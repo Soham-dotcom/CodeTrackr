@@ -9,6 +9,7 @@ const rateLimit = require('express-rate-limit');
 require("dotenv").config();
 const { log } = require('./services/logger');
 const { requestId } = require('./middleware/requestId');
+const httpMetrics = require('./services/httpMetrics');
 const { sessionKey } = require('./services/rateLimitKeys');
 
 // Error reporting is optional (roadmap item 18): nothing is sent anywhere
@@ -29,6 +30,7 @@ app.set("trust proxy", 1);
 // Standard security headers (HSTS, nosniff, no X-Powered-By, frameguard).
 // CSP is off by default in helmet — the SPA is served from Vercel, not here.
 app.use(requestId);
+app.use(httpMetrics.middleware);
 app.use(helmet());
 
 // CORS: allow requests from frontend (FRONTEND_URL) and local dev ports
@@ -115,6 +117,8 @@ const internalRoutes = require('./routes/internal');
 const deviceRoutes = require('./routes/device');
 const sessionRoutes = require('./routes/sessions');
 
+// Prometheus scrape endpoint (D-72): needs the METRICS_TOKEN bearer token; 404 when unset.
+app.get('/metrics', httpMetrics.handler);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/goals', goalRoutes);
